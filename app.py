@@ -9,12 +9,12 @@ from time import time
 import os
 
 app = Flask(__name__)
-API_KEY = os.environ.get("API_KEY", "QAwsEDrfTGyhUJikOLp")  # set this when running/deploying
+API_KEY = os.environ.get("API_KEY", "QAwsEDrfTGyhUJikOLp")  # Make sure this matches your Render env var
 
 # Store last state per node: { node: { "last_update": int, "data": {...} } }
 nodes = {}
 
-HTML = """
+HTML = """ 
 <!doctype html>
 <html>
 <head>
@@ -28,18 +28,14 @@ HTML = """
 </head>
 <body>
   <h2>ESP Remote Motion Dashboard</h2>
-
   <div class="card">
     <label for="nodeSel"><b>Node:</b></label>
     <select id="nodeSel"></select>
     <button onclick="reloadNodes()">Reload nodes</button>
   </div>
-
   <div id="root" class="card">Loading...</div>
-
 <script>
 async function getJSON(p){ const r = await fetch(p); return await r.json(); }
-
 async function loadNodes(){
   const j = await getJSON('/nodes.json');
   const sel = document.getElementById('nodeSel');
@@ -53,7 +49,6 @@ async function loadNodes(){
   }
 }
 async function reloadNodes(){ await loadNodes(); }
-
 async function refresh(){
   const node = document.getElementById('nodeSel').value;
   if(!node){ document.getElementById('root').textContent='No nodes yet. Waiting for device data...'; return; }
@@ -70,7 +65,6 @@ async function refresh(){
      <div><b>Raw:</b> PIR ${d.pirRaw||0} VIB ${d.vibRaw||0}</div>
      <div><b>Last update:</b> ${age}s ago</div>`;
 }
-
 (async()=>{
   await loadNodes();
   setInterval(refresh, 1000);
@@ -97,7 +91,22 @@ def live():
         if len(nodes) == 0:
             return jsonify({"last_update": 0, "data": {}})
         node = sorted(list(nodes.keys()))[0]
-    return jsonify(nodes.get(node, {"last_update": 0, "data": {}}))
+    # Map internal data dictionary keys to the dashboard expected key names
+    node_data = nodes.get(node, {"last_update": 0, "data": {}})
+    data = node_data.get("data", {})
+    # Provide default values and map fields
+    response_data = {
+        "state": data.get("state", "-"),
+        "time": data.get("time", "-"),
+        "motions": data.get("motions", 0),
+        "confirmed": data.get("confirmed", 0),
+        "pirHits": data.get("pirHits", 0),
+        "vibHits": data.get("vibHits", 0),
+        "occupiedSec": data.get("occupiedSec", 0),
+        "pirRaw": data.get("pirRaw", 0),
+        "vibRaw": data.get("vibRaw", 0),
+    }
+    return jsonify({"last_update": node_data.get("last_update", 0), "data": response_data})
 
 @app.route("/pir_event", methods=["POST"])
 def pir_event():
