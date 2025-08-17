@@ -9,7 +9,7 @@ from time import time
 import os
 
 app = Flask(__name__)
-API_KEY = os.environ.get("API_KEY", "change-me")  # set this when running/deploying
+API_KEY = os.environ.get("API_KEY", "QAwsEDrfTGyhUJikOLp")  # set this when running/deploying
 
 # Store last state per node: { node: { "last_update": int, "data": {...} } }
 nodes = {}
