@@ -15,46 +15,145 @@ nodes = {}
 
 HTML = """
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ESP Remote Motion Dashboard</title>
 <style>
- body{font-family:sans-serif;margin:18px;max-width:700px}
- .card{border:1px solid #ddd;border-radius:8px;padding:12px;margin:10px 0}
- select,button{font-size:16px;padding:6px}
+:root{
+  --bg:#0f172a; --card:#111827; --muted:#94a3b8; --accent:#22c55e; --warn:#f59e0b; --danger:#ef4444; --text:#e5e7eb;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; padding:24px;
+  background:linear-gradient(180deg,#0b1020 0%, #0f172a 100%);
+  color:var(--text); font:16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+.container{max-width:960px;margin:0 auto}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.title{font-size:22px;font-weight:700;letter-spacing:.2px}
+.controls{display:flex;gap:10px;flex-wrap:wrap}
+select,button{
+  background:#0b1222;border:1px solid #1f2937;color:var(--text);
+  padding:8px 10px;border-radius:8px;font-weight:600
+}
+button:hover{border-color:#334155;cursor:pointer}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media (max-width:820px){ .grid{grid-template-columns:repeat(2,1fr)} }
+@media (max-width:560px){ .grid{grid-template-columns:1fr} }
+
+.card{
+  background:radial-gradient(1200px 600px at -10% -20%, rgba(124,58,237,.15), transparent 35%),
+             radial-gradient(1000px 700px at 120% -20%, rgba(34,197,94,.15), transparent 40%),
+             #0b1222;
+  border:1px solid #1f2937; border-radius:14px; padding:16px; min-height:86px;
+  box-shadow: 0 12px 28px rgba(2,6,23,.55) inset, 0 8px 24px rgba(0,0,0,.35);
+}
+.card h3{margin:0 0 8px 0;font-size:14px;color:var(--muted);font-weight:600}
+.value{font-size:28px;font-weight:800;letter-spacing:.3px}
+.kv{display:flex;align-items:center;justify-content:space-between;margin-top:10px;color:var(--muted)}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;font-size:12px}
+.ok{background:rgba(34,197,94,.15);color:#86efac;border:1px solid rgba(34,197,94,.35)}
+.warn{background:rgba(245,158,11,.12);color:#fcd34d;border:1px solid rgba(245,158,11,.35)}
+.danger{background:rgba(239,68,68,.12);color:#fecaca;border:1px solid rgba(239,68,68,.35)}
+.footer{margin-top:14px;color:var(--muted);font-size:13px}
+.small{font-size:12px;color:var(--muted)}
+.divider{height:1px;background:#1f2937;margin:10px 0}
 </style>
 </head>
 <body>
-<h2>ESP Remote Motion Dashboard</h2>
-<div class="card">
-  <label for="nodeSel"><b>Node:</b></label>
-  <select id="nodeSel"></select>
-  <button onclick="reloadNodes()">Reload nodes</button>
+<div class="container">
+  <div class="header">
+    <div class="title">ESP Remote Motion Dashboard</div>
+    <div class="controls">
+      <select id="nodeSel"></select>
+      <button id="reloadBtn">Reload nodes</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Current state</h3>
+      <div class="value" id="state">-</div>
+      <div class="kv"><div>Time</div><div id="time" class="badge ok">-</div></div>
+    </div>
+
+    <div class="card">
+      <h3>Motion counts</h3>
+      <div class="value"><span id="motions">0</span> <span class="small">(confirmed <span id="confirmed">0</span>)</span></div>
+      <div class="kv"><div>PIR hits</div><div id="pirHits" class="badge warn">0</div></div>
+    </div>
+
+    <div class="card">
+      <h3>Vibration</h3>
+      <div class="value" id="vibHits">0</div>
+      <div class="kv"><div>Footsteps (est.)</div><div id="occupiedSec" class="badge">0s</div></div>
+    </div>
+
+    <div class="card">
+      <h3>Raw signals</h3>
+      <div class="kv"><div>PIR raw</div><div id="pirRaw" class="badge">0</div></div>
+      <div class="kv"><div>VIB raw</div><div id="vibRaw" class="badge">0</div></div>
+      <div class="divider"></div>
+      <div class="kv"><div>Last update</div><div id="ago" class="badge">-</div></div>
+    </div>
+
+    <div class="card">
+      <h3>Node</h3>
+      <div class="value" id="nodeName">-</div>
+      <div class="kv"><div>Status</div><div id="statusBadge" class="badge ok">Live</div></div>
+    </div>
+  </div>
+
+  <div class="footer">Auto-refreshing every second. Reload nodes every 10s.</div>
 </div>
-<div id="root" class="card">Loading...</div>
+
 <script>
-async function j(p){ const r=await fetch(p); return await r.json(); }
+async function j(p){ const r=await fetch(p,{cache:'no-store'}); return await r.json(); }
+
 async function loadNodes(){
   const js = await j('/nodes.json');
   const sel = document.getElementById('nodeSel');
   const prev = sel.value; sel.innerHTML='';
-  (js.nodes||[]).forEach(n=>{ const o=document.createElement('option'); o.value=n;o.textContent=n; sel.appendChild(o); });
-  if (js.nodes && js.nodes.length>0) sel.value = (prev && js.nodes.includes(prev))?prev:js.nodes;
+  (js.nodes||[]).forEach(n => {
+    const o = document.createElement('option');
+    o.value=n; o.textContent=n; sel.appendChild(o);
+  });
+  if (js.nodes && js.nodes.length>0) sel.value = (prev && js.nodes.includes(prev))?prev:js.nodes[0];
 }
-async function reloadNodes(){ await loadNodes(); }
+
+function setText(id, val){ document.getElementById(id).textContent = val; }
+function setBadge(id, cls){ const el=document.getElementById(id); el.className='badge '+cls; }
+
 async function refresh(){
-  const node = document.getElementById('nodeSel').value;
-  if(!node){ document.getElementById('root').textContent='No nodes yet...'; return; }
+  const sel = document.getElementById('nodeSel');
+  const node = sel.value;
+  if (!node) { setText('state','-'); setText('time','-'); return; }
   const js = await j('/live.json?node='+encodeURIComponent(node));
-  const d = js.data||{};
+  const d = js.data || {};
   const age = Math.max(0, Math.round(Date.now()/1000 - (js.last_update||0)));
-  document.getElementById('root').innerHTML =
-   `<div><b>Node:</b> ${node}</div>
-    <div><b>State:</b> ${d.state||'-'}</div>
-    <div><b>Time:</b> ${d.time||'-'}</div>
-    <div><b>Last update:</b> ${age}s ago</div>`;
+
+  setText('nodeName', node);
+  setText('state', d.state || '-');
+  setText('time', d.time || '-');
+  setText('motions', d.motions || 0);
+  setText('confirmed', d.confirmed || 0);
+  setText('pirHits', d.pirHits || 0);
+  setText('vibHits', d.vibHits || 0);
+  setText('occupiedSec', (d.occupiedSec||0)+'s');
+  setText('pirRaw', d.pirRaw || 0);
+  setText('vibRaw', d.vibRaw || 0);
+  setText('ago', age+'s ago');
+
+  // Color badges by state
+  const st = (d.state||'').toLowerCase();
+  if (st.includes('motion')) setBadge('statusBadge','warn');
+  else if (st.includes('vibration')) setBadge('statusBadge','danger');
+  else setBadge('statusBadge','ok');
 }
+
+document.getElementById('reloadBtn').addEventListener('click', loadNodes);
 (async()=>{ await loadNodes(); setInterval(refresh,1000); setInterval(loadNodes,10000); refresh(); })();
 </script>
 </body>
